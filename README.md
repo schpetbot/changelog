@@ -1,5 +1,15 @@
 # changelog
 
+```
+   _____ _    _          _   _  _____ ______ _      ____   _____
+  / ____| |  | |   /\   | \ | |/ ____|  ____| |    / __ \ / ____|
+ | |    | |__| |  /  \  |  \| | |  __| |__  | |   | |  | | |  __
+ | |    |  __  | / /\ \ | . ` | | |_ |  __| | |   | |  | | | |_ |
+ | |____| |  | |/ ____ \| |\  | |__| | |____| |___| |__| | |__| |
+  \_____|_|  |_/_/    \_\_| \_|\_____|______|______\____/ \_____|
+                                              keep a changelog 📜
+```
+
 a command line tool for managing changelogs following the [keep a changelog](https://keepachangelog.com) format.
 
 ## why
