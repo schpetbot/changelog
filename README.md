@@ -1,3 +1,16 @@
+<!--
+   _____ _                            _
+  / ____| |                          | |
+ | |    | |__   __ _ _ __   __ _  ___| | ___   __ _
+ | |    | '_ \ / _` | '_ \ / _` |/ _ \ |/ _ \ / _` |
+ | |____| | | | (_| | | | | (_| |  __/ | (_) | (_| |
+  \_____|_| |_|\__,_|_| |_|\__, |\___|_|\___/ \__, |
+                           __/ |              __/ |
+                          |___/              |___/
+
+  📝 Keep your changelog game strong! 📝
+-->
+
 # changelog
 
 a command line tool for managing changelogs following the [keep a changelog](https://keepachangelog.com) format.
