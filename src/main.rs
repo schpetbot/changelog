@@ -30,6 +30,9 @@ enum Commands {
         /// Version to add the change to (defaults to unreleased)
         #[arg(short, long)]
         version: Option<String>,
+        /// Commit SHA to look up associated PR and add attribution (e.g., "thanks @author")
+        #[arg(long)]
+        attribute_pr: Option<String>,
     },
     /// Release a new version
     Release {
@@ -78,9 +81,10 @@ fn main() {
             description,
             r#type,
             version,
+            attribute_pr,
         } => {
             let changelog = Changelog::new();
-            if let Err(e) = changelog.add(description, r#type, version.as_deref(), true) {
+            if let Err(e) = changelog.add(description, r#type, version.as_deref(), attribute_pr.as_deref(), true) {
                 eprintln!("Error adding changelog entry: {}", e);
                 std::process::exit(1);
             }
