@@ -38,6 +38,7 @@ use chrono::Local;
 use colored::Colorize;
 use git2::Repository;
 use indexmap::IndexMap;
+use octocrab::Octocrab;
 use parse_changelog::{Parser, Release};
 use similar::{ChangeTag, TextDiff};
 use std::fs;
@@ -197,12 +198,65 @@ impl Changelog {
         Ok(())
     }
 
+    async fn get_pr_author(
+        &self,
+        commit_sha: &str,
+        exclude_users: Option<&str>,
+    ) -> io::Result<Option<String>> {
+        let (owner, repo) = infer_github_repo().ok_or_else(|| {
+            io::Error::new(
+                ErrorKind::NotFound,
+                "Could not infer GitHub repository from git remote",
+            )
+        })?;
+
+        let octocrab = Octocrab::builder().build().map_err(|e| {
+            io::Error::new(
+                ErrorKind::Other,
+                format!("Failed to create GitHub client: {}", e),
+            )
+        })?;
+
+        // Use the GitHub API to list pull requests associated with this commit
+        let route = format!("/repos/{}/{}/commits/{}/pulls", owner, repo, commit_sha);
+        let prs: Vec<serde_json::Value> = octocrab.get(&route, None::<&()>).await.map_err(|e| {
+            io::Error::new(
+                ErrorKind::Other,
+                format!("Failed to fetch associated PRs: {}", e),
+            )
+        })?;
+
+        if let Some(pr) = prs.first() {
+            if let Some(user) = pr.get("user") {
+                if let Some(username) = user.get("login").and_then(|v| v.as_str()) {
+                    // Check if user should be excluded
+                    if let Some(excluded) = exclude_users {
+                        let excluded_list: Vec<&str> =
+                            excluded.split(',').map(|s| s.trim()).collect();
+                        if excluded_list.contains(&username) {
+                            return Ok(None);
+                        }
+                    }
+
+                    return Ok(Some(username.to_string()));
+                }
+            }
+        }
+
+        Err(io::Error::new(
+            ErrorKind::NotFound,
+            format!("No PR found for commit {}", commit_sha),
+        ))
+    }
+
     pub fn add(
         &self,
         description: &str,
         r#type: &ChangeType,
         version: Option<&str>,
         show_diff: bool,
+        attribute_pr: Option<&str>,
+        exclude_users: Option<&str>,
     ) -> io::Result<()> {
         if !self.path.exists() {
             return Err(io::Error::new(
@@ -210,6 +264,27 @@ impl Changelog {
                 "CHANGELOG.md does not exist. Run 'changelog init' first.",
             ));
         }
+
+        // Handle PR attribution if requested
+        let final_description = if let Some(commit_sha) = attribute_pr {
+            let runtime = tokio::runtime::Runtime::new().map_err(|e| {
+                io::Error::new(
+                    ErrorKind::Other,
+                    format!("Failed to create async runtime: {}", e),
+                )
+            })?;
+
+            match runtime.block_on(self.get_pr_author(commit_sha, exclude_users)) {
+                Ok(Some(author)) => format!("{} (thanks @{})", description, author),
+                Ok(None) => description.to_string(),
+                Err(e) => {
+                    eprintln!("Warning: {}", e);
+                    description.to_string()
+                }
+            }
+        } else {
+            description.to_string()
+        };
 
         let content = fs::read_to_string(&self.path)?;
         let parser = Parser::new();
@@ -253,7 +328,10 @@ impl Changelog {
                         let next_line = &lines[insert_idx];
                         // If the line starts with whitespace and isn't a new list item or section,
                         // it's a continuation of the previous list item
-                        if next_line.starts_with("  ") && !next_line.trim().starts_with('-') && !next_line.trim().starts_with("### ") {
+                        if next_line.starts_with("  ")
+                            && !next_line.trim().starts_with('-')
+                            && !next_line.trim().starts_with("### ")
+                        {
                             insert_idx += 1;
                         } else {
                             break;
@@ -269,7 +347,7 @@ impl Changelog {
                 lines.remove(insert_idx - 1);
                 insert_idx -= 1;
             }
-            lines.insert(insert_idx, format!("- {}\n", description));
+            lines.insert(insert_idx, format!("- {}\n", final_description));
         } else {
             // Section doesn't exist - create it
             // Find where to insert the new section
@@ -283,7 +361,7 @@ impl Changelog {
             // Insert the new section
             lines.insert(insert_idx, section_marker);
             lines.insert(insert_idx + 1, String::new());
-            lines.insert(insert_idx + 2, format!("- {}", description));
+            lines.insert(insert_idx + 2, format!("- {}", final_description));
             lines.insert(insert_idx + 3, String::new());
         }
 
@@ -792,6 +870,8 @@ impl Changelog {
                 },
                 version,
                 false,
+                None,
+                None,
             )?;
         }
 
@@ -1267,7 +1347,7 @@ All notable changes to this project will be documented in this file.
 
         // Add new entry
         changelog
-            .add("three", &ChangeType::Added, None, false)
+            .add("three", &ChangeType::Added, None, false, None, None)
             .unwrap();
 
         // Verify result
@@ -1345,7 +1425,7 @@ Custom Header Line 2
 
         // Add new entry that requires Added section
         changelog
-            .add("new feature", &ChangeType::Added, None, false)
+            .add("new feature", &ChangeType::Added, None, false, None, None)
             .unwrap();
 
         // Verify result
@@ -1493,16 +1573,23 @@ Custom Header Line 2
 
         // Add new entry - this should not break multiline entries
         changelog
-            .add("new single line entry", &ChangeType::Added, None, false)
+            .add(
+                "new single line entry",
+                &ChangeType::Added,
+                None,
+                false,
+                None,
+                None,
+            )
             .unwrap();
 
         // Verify result - multiline entries should be preserved
         let content = fs::read_to_string(&changelog.path).unwrap();
-        
+
         // The multiline entry should still exist with proper indentation
         assert!(content.contains("- this entry\n  has multiple lines"));
         assert!(content.contains("- new single line entry"));
-        
+
         // Verify the structure is still intact
         let parser = Parser::new();
         let parsed = parser.parse(&content).unwrap();

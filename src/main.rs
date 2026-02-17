@@ -30,6 +30,12 @@ enum Commands {
         /// Version to add the change to (defaults to unreleased)
         #[arg(short, long)]
         version: Option<String>,
+        /// Attribute PR to its author based on commit SHA
+        #[arg(long)]
+        attribute_pr: Option<String>,
+        /// Comma-separated list of GitHub usernames to exclude from attribution
+        #[arg(long)]
+        exclude_users: Option<String>,
     },
     /// Release a new version
     Release {
@@ -78,9 +84,18 @@ fn main() {
             description,
             r#type,
             version,
+            attribute_pr,
+            exclude_users,
         } => {
             let changelog = Changelog::new();
-            if let Err(e) = changelog.add(description, r#type, version.as_deref(), true) {
+            if let Err(e) = changelog.add(
+                description,
+                r#type,
+                version.as_deref(),
+                true,
+                attribute_pr.as_deref(),
+                exclude_users.as_deref(),
+            ) {
                 eprintln!("Error adding changelog entry: {}", e);
                 std::process::exit(1);
             }
